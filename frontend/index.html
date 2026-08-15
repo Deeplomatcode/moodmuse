@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoodMuse</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0f0e17;
+      --surface:      #1a1828;
+      --surface-2:    #231f35;
+      --border:       #2e2a45;
+      --accent:       #a78bfa;
+      --accent-dark:  #7c3aed;
+      --accent-glow:  rgba(167, 139, 250, 0.25);
+      --text:         #e8e4f0;
+      --text-muted:   #8b7fb8;
+      --error:        #f87171;
+      --radius:       12px;
+      --radius-sm:    8px;
+      --font:         'Georgia', 'Times New Roman', serif;
+      --font-ui:      system-ui, -apple-system, sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      line-height: 1.6;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-family: var(--font);
+      font-weight: normal;
+      letter-spacing: 0.04em;
+      background: linear-gradient(135deg, #c4b5fd 0%, #a78bfa 50%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    header p {
+      margin-top: 0.5rem;
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    /* ── Input card ───────────────────────────────────────────────────────── */
+    .input-card {
+      width: 100%;
+      max-width: 680px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+    }
+
+    textarea {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 1rem;
+      line-height: 1.5;
+      padding: 0.75rem 1rem;
+      resize: vertical;
+      min-height: 80px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    textarea::placeholder { color: var(--text-muted); }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .input-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 1rem;
+      gap: 1rem;
+    }
+
+    #char-count {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    #char-count.near-limit { color: #fb923c; }
+    #char-count.at-limit   { color: var(--error); }
+
+    /* ── Generate button ──────────────────────────────────────────────────── */
+    #generate-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent-dark);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: var(--font-ui);
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    #generate-btn:hover:not(:disabled) {
+      background: var(--accent);
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    #generate-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    /* Spinner shown during loading */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    #generate-btn.loading .spinner { display: block; }
+    #generate-btn.loading .btn-text::after { content: "…"; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error banner ─────────────────────────────────────────────────────── */
+    #error-banner {
+      display: none;
+      width: 100%;
+      max-width: 680px;
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      border-radius: var(--radius-sm);
+      color: var(--error);
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    #error-banner.visible { display: block; }
+
+    /* ── Output area ──────────────────────────────────────────────────────── */
+    #output {
+      display: none;
+      width: 100%;
+      max-width: 980px;
+      gap: 1.5rem;
+    }
+
+    #output.visible {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    @media (max-width: 640px) {
+      #output.visible { grid-template-columns: 1fr; }
+    }
+
+    /* ── Poem card ────────────────────────────────────────────────────────── */
+    .poem-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 1.25rem;
+    }
+
+    #poem-text {
+      font-family: var(--font);
+      font-size: 1.05rem;
+      line-height: 1.9;
+      color: var(--text);
+      white-space: pre-line;
+      flex: 1;
+    }
+
+    /* ── Image card ───────────────────────────────────────────────────────── */
+    .image-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #mood-image {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      display: block;
+      /* Fade in when src is set */
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    #mood-image.loaded { opacity: 1; }
+
+    /* ── Footer ───────────────────────────────────────────────────────────── */
+    footer {
+      margin-top: 3rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>MoodMuse</h1>
+    <p>Type a mood or scene &mdash; get a poem and a mood board.</p>
+  </header>
+
+  <div class="input-card">
+    <label for="prompt-input">Your mood or scene</label>
+    <textarea
+      id="prompt-input"
+      rows="3"
+      maxlength="500"
+      placeholder="rainy Sunday morning, first day of spring, midnight city lights…"
+      aria-label="Mood or scene prompt"
+      aria-describedby="char-count"
+    ></textarea>
+    <div class="input-footer">
+      <span id="char-count" aria-live="polite">0 / 500</span>
+      <button id="generate-btn" type="button" aria-label="Generate poem and mood board">
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="btn-text">Generate</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="error-banner" role="alert" aria-live="assertive"></div>
+
+  <section id="output" aria-label="Generated output" aria-live="polite">
+    <div class="poem-card">
+      <div class="card-label">Poem</div>
+      <p id="poem-text"></p>
+    </div>
+    <div class="image-card">
+      <div class="card-label">Mood Board</div>
+      <img id="mood-image" alt="AI-generated mood board image matching your prompt" />
+    </div>
+  </section>
+
+  <footer>
+    Built with <a href="https://aws.amazon.com/bedrock/" target="_blank" rel="noopener">Amazon Bedrock</a>
+    &mdash; AWS Builder Center Weekend Challenge
+  </footer>
+
+  <script>
+    // ── API endpoint ───────────────────────────────────────────────────────────
+    // ⚠️  THIS IS THE ONLY LINE THAT CHANGES WHEN YOU DEPLOY FOR REAL.
+    // Replace the localhost URL with your API Gateway invoke URL, e.g.:
+    //   const API_URL = "https://abc123.execute-api.us-east-1.amazonaws.com/generate";
+    const API_URL = "http://localhost:8000/generate";
+
+    // ── Element refs ───────────────────────────────────────────────────────────
+    const promptInput  = document.getElementById("prompt-input");
+    const charCount    = document.getElementById("char-count");
+    const generateBtn  = document.getElementById("generate-btn");
+    const errorBanner  = document.getElementById("error-banner");
+    const output       = document.getElementById("output");
+    const poemText     = document.getElementById("poem-text");
+    const moodImage    = document.getElementById("mood-image");
+
+    // ── Character counter ──────────────────────────────────────────────────────
+    promptInput.addEventListener("input", () => {
+      const len = promptInput.value.length;
+      charCount.textContent = `${len} / 500`;
+      charCount.classList.toggle("near-limit", len >= 400 && len < 490);
+      charCount.classList.toggle("at-limit",   len >= 490);
+    });
+
+    // ── State helpers ──────────────────────────────────────────────────────────
+    function setLoading(on) {
+      generateBtn.disabled = on;
+      generateBtn.classList.toggle("loading", on);
+      promptInput.disabled = on;
+    }
+
+    function showError(msg) {
+      errorBanner.textContent = msg;
+      errorBanner.classList.add("visible");
+      // Hide output while showing error
+      output.classList.remove("visible");
+    }
+
+    function clearError() {
+      errorBanner.textContent = "";
+      errorBanner.classList.remove("visible");
+    }
+
+    function showOutput(poem, imageB64) {
+      // Render poem (preserve line breaks)
+      poemText.textContent = poem;
+
+      // Render image with fade-in
+      moodImage.classList.remove("loaded");
+      moodImage.onload = () => moodImage.classList.add("loaded");
+      moodImage.src = `data:image/png;base64,${imageB64}`;
+
+      output.classList.add("visible");
+      // Scroll output into view smoothly
+      output.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ── Generate handler ───────────────────────────────────────────────────────
+    async function generate() {
+      const prompt = promptInput.value.trim();
+
+      if (!prompt) {
+        showError("Please enter a mood or scene before generating.");
+        return;
+      }
+
+      clearError();
+      setLoading(true);
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt }),
+        });
+
+        // Parse JSON regardless of status so we can read the error message
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error("The server returned an unexpected response. Please try again.");
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || `Server error (${response.status}). Please try again.`);
+        }
+
+        if (!data.poem || !data.image_b64) {
+          throw new Error("Incomplete response from server. Please try again.");
+        }
+
+        showOutput(data.poem, data.image_b64);
+
+      } catch (err) {
+        if (err.name === "TypeError" && err.message.includes("fetch")) {
+          // Network error — local server probably not running
+          showError("Could not reach the server. Make sure local_server.py is running on localhost:8000.");
+        } else {
+          showError(err.message);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // ── Event listeners ────────────────────────────────────────────────────────
+    generateBtn.addEventListener("click", generate);
+
+    // Allow Ctrl+Enter / Cmd+Enter to submit from the textarea
+    promptInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
+    });
+  </script>
+
+</body>
+</html>
