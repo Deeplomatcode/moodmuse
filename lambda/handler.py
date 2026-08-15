@@ -1,6 +1,8 @@
 """
 MoodMuse Lambda handler
-Calls Amazon Bedrock Nova Micro (poem) + Nova Canvas (image).
+Calls Amazon Bedrock Nova Micro (poem) + Stability control-sketch (image).
+Nova Canvas is unusable in this account (LEGACY, hard-denied with no prior
+usage) — see MODEL_IMAGE note below.
 Returns { poem: str, image_b64: str } or { error: str }.
 
 MOCK_MODE
@@ -35,8 +37,21 @@ MOCK_MODE: bool = os.environ.get("MOCK_MODE", "true").lower() == "true"
 
 # ── Model IDs ──────────────────────────────────────────────────────────────────
 MODEL_TEXT  = "amazon.nova-micro-v1:0"
-MODEL_IMAGE = "amazon.nova-canvas-v1:0"
-# Fallback: MODEL_IMAGE = "amazon.titan-image-generator-v1"
+# Nova Canvas (amazon.nova-canvas-v1:0) is marked LEGACY account-wide — brand
+# new accounts with no prior invoke history get a hard AccessDenied via
+# ResourceNotFoundException. Titan Image Generator has been fully retired
+# (not even listed as legacy). Using Stability's control-sketch model instead,
+# paired with a neutral seed image and a low control_strength, as a practical
+# text-to-image substitute.
+MODEL_IMAGE = "us.stability.stable-image-control-sketch-v1:0"  # inference profile ID — base model ID is not invocable on-demand
+# Rollback if Nova Canvas becomes usable again: MODEL_IMAGE = "amazon.nova-canvas-v1:0"
+
+# Neutral 512x512 solid-gray seed image (base64 PNG) — control-sketch requires
+# an input image. With control_strength set low above, the text prompt
+# dominates the output rather than this seed.
+SKETCH_SEED_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAIAAAB7GkOtAAAHHUlEQVR4nO3VMQEAIAzAMED5pCNjRxMF/Xpn5gDQ87YDANhhAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABBlAABRBgAQZQAAUQYAEGUAAFEGABD1AXY7BYDIWA2bAAAAAElFTkSuQmCC"
+)
 
 # ── Lazy Bedrock client — only instantiated when MOCK_MODE is false ────────────
 # This avoids any boto3/credential lookup during local testing.
@@ -115,11 +130,12 @@ def _generate_poem(prompt: str) -> str:
 
 def _generate_image(prompt: str) -> str:
     """
-    Calls Nova Canvas (or Titan fallback) via invoke_model.
+    Calls the configured image model via invoke_model.
     Returns base64-encoded PNG string.
 
-    Width/height/quality are set explicitly to 512x512 standard so generation
-    stays fast and reliably under the 30s API Gateway integration timeout.
+    Default model is Stability control-sketch (see MODEL_IMAGE note above) —
+    the Nova Canvas and Titan branches are kept for rollback if either becomes
+    usable in this account again.
     """
     bedrock = _get_bedrock()
 
@@ -143,6 +159,17 @@ def _generate_image(prompt: str) -> str:
                 "cfgScale":       7.5,
             },
         }
+    elif "stability" in MODEL_IMAGE:
+        # ── Stability control-sketch request body ──────────────────────────────
+        # Requires an input "image". control_strength near 0 makes the prompt
+        # dominate over the seed image, approximating text-to-image generation.
+        body = {
+            "prompt":           image_prompt,
+            "image":            SKETCH_SEED_B64,
+            "control_strength": 0.15,
+            "output_format":    "png",
+            "seed":             0,
+        }
     else:
         # ── Titan Image Generator v1 fallback ─────────────────────────────────
         body = {
@@ -165,8 +192,12 @@ def _generate_image(prompt: str) -> str:
 
     result = json.loads(response["body"].read())
 
-    # Nova Canvas and Titan both return images[0] as base64
-    return result["images"][0]
+    # Response shape varies by provider — handle both conventions.
+    if "images" in result:
+        return result["images"][0]
+    if "artifacts" in result:
+        return result["artifacts"][0]["base64"]
+    raise KeyError(f"Unrecognized image response shape: {list(result.keys())}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

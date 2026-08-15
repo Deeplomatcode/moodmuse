@@ -136,6 +136,55 @@ variables before using the live API.
 
 ---
 
+## Stage 4 — S3 Deploy
+
+Run **after** Stage 2 (API Gateway must be deployed and the invoke URL known).
+
+### Prerequisites
+
+Before running the script, update the `API_URL` constant in `frontend/index.html`:
+
+```js
+// Change this line:
+const API_URL = "http://localhost:8000/generate";
+
+// To the URL printed at the end of deploy-stage2.sh, e.g.:
+const API_URL = "https://<api-id>.execute-api.us-east-1.amazonaws.com/generate";
+```
+
+The script will warn and prompt for confirmation if it detects `localhost:8000` is still in the file, but it's easier to fix it before running.
+
+### Deploy
+
+```bash
+cd "/Users/mohammedbakare/Mood Muse/moodmuse"
+./deploy-stage4.sh
+```
+
+The script will:
+1. **Pre-flight check** — scans `frontend/index.html` for `localhost:8000` and warns if found, giving you a chance to abort before anything is uploaded
+2. **Create S3 bucket** named `moodmuse-<account-id>-us-east-1` (account ID makes it globally unique), or skip creation if it already exists
+3. **Disable Block Public Access** — all four settings are set to false; this is a common silent-failure point: if any remain true, the public-read policy in the next step takes no effect and every request returns 403 with no useful error
+4. **Apply public-read bucket policy** — grants `s3:GetObject` to `Principal: "*"` on all objects, making the site publicly accessible
+5. **Enable static website hosting** with `index.html` as the index document
+6. **Upload `frontend/index.html`** to the bucket root with `Content-Type: text/html`
+
+At the end it prints the S3 website endpoint URL.
+
+> **HTTP only**: S3 static website endpoints serve over HTTP, not HTTPS. The URL will be
+> `http://moodmuse-<account-id>-us-east-1.s3-website-us-east-1.amazonaws.com`.
+> This is fine for a demo submission — just worth knowing so you're not surprised
+> by the browser's "Not secure" indicator. Adding HTTPS would require CloudFront,
+> which is a stretch goal not needed for the Aug 17 deadline.
+
+### Before sharing the link — checklist
+
+1. `API_URL` in `frontend/index.html` points at the API Gateway invoke URL, not `localhost`
+2. `MOCK_MODE=false` is set as an environment variable in the Lambda console — otherwise every request returns the hardcoded sample poem and purple square
+3. Bedrock model access for **Amazon Nova Micro** and **Amazon Nova Canvas** is enabled in the [Bedrock console](https://console.aws.amazon.com/bedrock) (us-east-1)
+
+---
+
 ## File Map
 
 ```

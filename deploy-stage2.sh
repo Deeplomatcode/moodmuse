@@ -104,32 +104,43 @@ fi
 
 INTEGRATION_TARGET="integrations/${INTEGRATION_ID}"
 
-# ── Step 4: Create POST /generate route (or reuse) ────────────────────────────
+# ── Step 4: Create POST /generate and OPTIONS /generate routes (or reuse) ─────
+#
+# BOTH routes are required. The browser sends an OPTIONS preflight before every
+# cross-origin POST. Without an OPTIONS route, API Gateway returns 404 on the
+# preflight — Lambda is never invoked, no CORS headers are returned, and the
+# browser blocks the actual POST. This was the root-cause bug: only POST was
+# originally created, causing all browser requests to fail silently.
+#
+# handler.py handles OPTIONS explicitly (returns 200 + CORS headers), so both
+# routes point at the same Lambda integration.
 echo ""
-echo "── Step 4: Route POST /generate ─────────────────────────────────────────"
+echo "── Step 4: Routes POST /generate + OPTIONS /generate ────────────────────"
 
-EXISTING_ROUTE_ID=$(
-  aws apigatewayv2 get-routes \
-    --api-id "$API_ID" \
-    --region "$REGION" \
-    --query "Items[?RouteKey=='POST /generate'].RouteId" \
-    --output text
-)
-
-if [ -n "$EXISTING_ROUTE_ID" ] && [ "$EXISTING_ROUTE_ID" != "None" ]; then
-  echo "Route 'POST /generate' already exists (id: $EXISTING_ROUTE_ID) — reusing."
-else
-  ROUTE_ID=$(
-    aws apigatewayv2 create-route \
+for ROUTE_KEY in "POST /generate" "OPTIONS /generate"; do
+  EXISTING_ROUTE_ID=$(
+    aws apigatewayv2 get-routes \
       --api-id "$API_ID" \
-      --route-key "POST /generate" \
-      --target "$INTEGRATION_TARGET" \
       --region "$REGION" \
-      --query RouteId \
+      --query "Items[?RouteKey=='${ROUTE_KEY}'].RouteId" \
       --output text
   )
-  echo "Created route 'POST /generate' (id: $ROUTE_ID)."
-fi
+
+  if [ -n "$EXISTING_ROUTE_ID" ] && [ "$EXISTING_ROUTE_ID" != "None" ]; then
+    echo "Route '${ROUTE_KEY}' already exists (id: $EXISTING_ROUTE_ID) — reusing."
+  else
+    NEW_ROUTE_ID=$(
+      aws apigatewayv2 create-route \
+        --api-id "$API_ID" \
+        --route-key "$ROUTE_KEY" \
+        --target "$INTEGRATION_TARGET" \
+        --region "$REGION" \
+        --query RouteId \
+        --output text
+    )
+    echo "Created route '${ROUTE_KEY}' (id: $NEW_ROUTE_ID)."
+  fi
+done
 
 # ── Step 5: Create/update \$default stage with auto-deploy enabled ─────────────
 echo ""

@@ -8,8 +8,19 @@
       "Resource": [
         "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0",
         "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-canvas-v1:0",
-        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-image-generator-v1"
+        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-image-generator-v1",
+        "arn:aws:bedrock:*::foundation-model/stability.stable-image-control-sketch-v1:0",
+        "arn:aws:bedrock:us-east-1:773135747697:inference-profile/us.stability.stable-image-control-sketch-v1:0"
       ]
+    },
+    {
+      "Sid": "MarketplaceModelSubscriptions",
+      "Effect": "Allow",
+      "Action": [
+        "aws-marketplace:ViewSubscriptions",
+        "aws-marketplace:Subscribe"
+      ],
+      "Resource": "*"
     }
   ]
 }

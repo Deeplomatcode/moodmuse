@@ -139,6 +139,7 @@ echo "── Step 5: Upload frontend/index.html ──────────�
 
 aws s3 cp "$INDEX_FILE" "s3://${BUCKET_NAME}/index.html" \
   --content-type "text/html" \
+  --cache-control "no-cache, must-revalidate" \
   --region "$REGION"
 
 echo "Uploaded index.html to s3://$BUCKET_NAME/index.html"

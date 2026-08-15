@@ -79,6 +79,11 @@ if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" &
     --zip-file fileb://function.zip \
     --region "$REGION"
 
+  echo "Waiting for code update to finish propagating..."
+  aws lambda wait function-updated-v2 \
+    --function-name "$FUNCTION_NAME" \
+    --region "$REGION"
+
   echo "Updating configuration..."
   aws lambda update-function-configuration \
     --function-name "$FUNCTION_NAME" \
