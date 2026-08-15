@@ -2,7 +2,7 @@
 
 AI Mood Board & Micro-Poem Generator — AWS Builder Center Weekend Challenge (Aug 2026)
 
-Type a short mood or scene → get a 4–8 line poem from Amazon Bedrock Nova Micro and a matching mood board image from Amazon Bedrock Nova Canvas, side by side on one screen.
+Type a short mood or scene → get a 4–8 line poem from Amazon Bedrock Nova Micro and a matching mood board image from Stability AI's stable-image-control-sketch model, side by side on one screen.
 
 ---
 
@@ -18,7 +18,7 @@ API Gateway HTTP API
     ▼
 Lambda (Python 3.12, 29s timeout)
   ├── Bedrock Nova Micro  → poem string
-  └── Bedrock Nova Canvas → base64 PNG
+  └── Bedrock Stability control-sketch (inference profile) → base64 PNG
     │
     ▼
 { poem, image_b64 }  ← rendered directly in the browser
@@ -31,9 +31,9 @@ Image is returned as base64 in the Lambda response — no S3 image bucket, no pr
 ## Stage Status
 
 - [x] Stage 1 — Lambda + Bedrock
-- [~] Stage 2 — API Gateway (script written, not yet deployed — no AWS account connected)
-- [x] Stage 3 — Frontend (`frontend/index.html` complete, runs locally against local_server.py)
-- [~] Stage 4 — S3 Deploy (script written, not yet deployed — no AWS account connected)
+- [x] Stage 2 — API Gateway
+- [x] Stage 3 — Frontend (`frontend/index.html` complete, tested locally and live)
+- [x] Stage 4 — S3 Deploy
 - [ ] Stage 5 — Polish
 
 ---
@@ -48,22 +48,18 @@ aws sts get-caller-identity
 aws configure get region   # should be us-east-1
 ```
 
-### 1. Enable Bedrock model access (REQUIRED before anything works)
+### 1. Bedrock model access
 
-1. Open the [Bedrock console](https://console.aws.amazon.com/bedrock) in **us-east-1**
-2. Left nav → **Model access** → **Manage model access**
-3. Enable both:
-   - `Amazon Nova Micro`  (text)
-   - `Amazon Nova Canvas` (image)
-4. Click **Save changes** — access is usually granted within a few seconds for Nova models.
-
-> If Nova Canvas shows as unavailable in your account, enable `Amazon Titan Image Generator v1` instead,
-> then edit `lambda/handler.py` line: `MODEL_IMAGE = "amazon.titan-image-generator-v1"`
+Foundation models in Bedrock are **auto-enabled on first invoke** — there is no
+manual model-access toggle to set. The "Model access" page in the Bedrock console
+has been retired. If a model returns `AccessDeniedException`, it is either not
+available in your region or requires a Marketplace subscription (see IAM
+permissions below).
 
 ### 2. Deploy with the script
 
 ```bash
-cd "/Users/mohammedbakare/Mood Muse/moodmuse"
+cd "/path/to/moodmuse"
 ./deploy-stage1.sh
 ```
 
@@ -96,15 +92,15 @@ The script will:
 }
 ```
 
-The `image_b64` value will be a long base64 string (~200–350KB). That's correct.
+The `image_b64` value will be a long base64 string. That's correct.
 
 **Common errors and fixes:**
 
 | Error | Cause | Fix |
 |---|---|---|
-| `AccessDeniedException` | Model access not enabled | Step 1 above |
-| `ResourceNotFoundException` | Wrong model ID or region | Confirm region = us-east-1 |
-| Function timeout | Image gen took >29s | Rare at 512×512 standard; check CloudWatch logs |
+| `AccessDeniedException` | Model not available or not subscribed | Check Marketplace subscription for Stability model |
+| `ResourceNotFoundException` | Wrong model/inference profile ID or region | Confirm region = us-east-1, confirm inference profile ID |
+| Function timeout | Image gen took >29s | Check CloudWatch logs; confirm seed image size |
 | `ValidationException` | Bad request body to Bedrock | Check CloudWatch logs for the raw error |
 
 ---
@@ -114,7 +110,7 @@ The `image_b64` value will be a long base64 string (~200–350KB). That's correc
 Run **after** Stage 1 (Lambda must exist first).
 
 ```bash
-cd "/Users/mohammedbakare/Mood Muse/moodmuse"
+cd "/path/to/moodmuse"
 ./deploy-stage2.sh
 ```
 
@@ -157,7 +153,7 @@ The script will warn and prompt for confirmation if it detects `localhost:8000` 
 ### Deploy
 
 ```bash
-cd "/Users/mohammedbakare/Mood Muse/moodmuse"
+cd "/path/to/moodmuse"
 ./deploy-stage4.sh
 ```
 
@@ -167,7 +163,7 @@ The script will:
 3. **Disable Block Public Access** — all four settings are set to false; this is a common silent-failure point: if any remain true, the public-read policy in the next step takes no effect and every request returns 403 with no useful error
 4. **Apply public-read bucket policy** — grants `s3:GetObject` to `Principal: "*"` on all objects, making the site publicly accessible
 5. **Enable static website hosting** with `index.html` as the index document
-6. **Upload `frontend/index.html`** to the bucket root with `Content-Type: text/html`
+6. **Upload `frontend/index.html`** to the bucket root with `Content-Type: text/html` and `Cache-Control: no-cache, must-revalidate`
 
 At the end it prints the S3 website endpoint URL.
 
@@ -181,7 +177,7 @@ At the end it prints the S3 website endpoint URL.
 
 1. `API_URL` in `frontend/index.html` points at the API Gateway invoke URL, not `localhost`
 2. `MOCK_MODE=false` is set as an environment variable in the Lambda console — otherwise every request returns the hardcoded sample poem and purple square
-3. Bedrock model access for **Amazon Nova Micro** and **Amazon Nova Canvas** is enabled in the [Bedrock console](https://console.aws.amazon.com/bedrock) (us-east-1)
+3. Stability AI model subscription is active in AWS Marketplace for account
 
 ---
 
@@ -190,14 +186,14 @@ At the end it prints the S3 website endpoint URL.
 ```
 moodmuse/
   lambda/
-    handler.py          ← Lambda function (Stages 1–2)
+    handler.py          ← Lambda function
     local_server.py     ← Local dev server (stdlib only, no deps)
     test_event.json     ← Paste into Lambda console Test tab
   iam/
     lambda-trust-policy.json   ← Allows Lambda service to assume the role
-    lambda-bedrock-policy.json ← Allows bedrock:InvokeModel on Nova + Titan
+    lambda-bedrock-policy.json ← Bedrock + Marketplace permissions (see IAM section)
   frontend/
-    index.html          ← Full UI (Stage 3) — runs locally and from S3
+    index.html          ← Full UI — runs locally and from S3
   deploy-stage1.sh      ← Creates IAM role + deploys Lambda
   deploy-stage2.sh      ← Creates HTTP API + wires Lambda integration
   deploy-stage4.sh      ← Creates S3 bucket + uploads frontend
@@ -210,12 +206,14 @@ moodmuse/
 
 | Permission | Resource | Reason |
 |---|---|---|
-| `bedrock:InvokeModel` | Nova Micro ARN | Poem generation |
-| `bedrock:InvokeModel` | Nova Canvas ARN | Image generation |
-| `bedrock:InvokeModel` | Titan Image v1 ARN | Fallback if Nova Canvas unavailable |
+| `bedrock:InvokeModel` | Nova Micro ARN (`us-east-1`) | Poem generation |
+| `bedrock:InvokeModel` | Stability control-sketch foundation model ARN (wildcard region) | Image generation — base model |
+| `bedrock:InvokeModel` | Stability control-sketch inference profile ARN (`us-east-1`, account-scoped) | Image generation — cross-region inference profile required for on-demand invocation |
+| `aws-marketplace:ViewSubscriptions` | `*` | Required to invoke Marketplace-sourced Stability model |
+| `aws-marketplace:Subscribe` | `*` | Required to invoke Marketplace-sourced Stability model |
 | CloudWatch Logs (managed) | `AWSLambdaBasicExecutionRole` | Lambda execution logs |
 
-No S3, no DynamoDB, no VPC — intentionally minimal.
+No S3 data bucket, no DynamoDB, no VPC — intentionally minimal.
 
 ---
 
@@ -224,8 +222,8 @@ No S3, no DynamoDB, no VPC — intentionally minimal.
 - **Lambda / API Gateway / S3**: effectively $0 at demo volume (free tier covers it)
 - **Bedrock inference**: NOT free tier
   - Nova Micro: ~$0.0001 per poem (sub-cent)
-  - Nova Canvas: $0.06 per image (standard quality)
-  - 20 test runs ≈ ~$1.20 in image costs — keep this in mind during testing
+  - Stability control-sketch: ~$0.07 per image (us-east-1)
+  - 20 test runs ≈ ~$1.40 in image costs — keep this in mind during testing
 
 ---
 
@@ -236,8 +234,17 @@ No S3, no DynamoDB, no VPC — intentionally minimal.
 | Base64 image in response | Avoids S3 image bucket + presigned URL complexity for a 2-day build |
 | HTTP API (not REST API) | ~70% cheaper, simpler CORS, no usage plans needed |
 | Nova Micro for text | Lowest latency in the Nova family; poems don't need Pro reasoning |
-| 512×512 explicit in request | Nova Canvas defaults to 1024×1024 — too slow for 30s API cap |
-| 29s Lambda timeout | HTTP API hard cap is 30s and cannot be raised; 29s gives 1s headroom |
-| Lambda-only CORS headers | Duplicate headers from both Lambda + API GW break browsers |
+| Stability control-sketch via inference profile | Nova Canvas is marked LEGACY account-wide on new accounts with no prior invoke history — hard `AccessDenied` on first call. Titan Image Generator v1 has been fully retired. Stability control-sketch via a cross-region inference profile was the working path. A neutral 512×512 gray seed image with `control_strength: 0.15` lets the text prompt dominate output. |
+| Seed image controls output size | Stability control-sketch output dimensions match the input seed image — no explicit width/height parameter in the request. 512×512 seed keeps the response payload under ~350 KB and generation well under 29s. |
+| 29s Lambda timeout | HTTP API integration timeout is hard-capped at 30s and cannot be raised. 29s gives 1s headroom. |
+| Lambda-only CORS headers | Duplicate `Access-Control-Allow-Origin` headers (one from Lambda, one from API GW) cause browsers to block the response. |
+| MOCK_MODE default true | Full click-through testable locally without AWS credentials. The only env var change needed at deploy time. |
 | Vanilla JS, no framework | Zero build step; drop index.html in S3 and it works |
 | No DynamoDB / auth / history | Scope discipline — one clear creative job, Aug 17 deadline |
+
+> **Historical note**: the original plan used Nova Canvas for images. It was
+> superseded when the account returned a hard `AccessDenied` on first invoke
+> (Nova Canvas is classified LEGACY on accounts with no prior usage history)
+> and Titan Image Generator v1 was found to be fully retired and not listed in
+> the account catalog at all. The pivot to Stability control-sketch via inference
+> profile added about an hour of work but unblocked the build entirely.
