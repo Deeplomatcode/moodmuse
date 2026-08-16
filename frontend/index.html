@@ -16,6 +16,9 @@
       --accent:       #a78bfa;
       --accent-dark:  #7c3aed;
       --accent-glow:  rgba(167, 139, 250, 0.25);
+      --glow-1:       rgba(167, 139, 250, 0.35);
+      --glow-2:       rgba(129, 140, 248, 0.28);
+      --glow-3:       rgba(196, 181, 253, 0.22);
       --text:         #e8e4f0;
       --text-muted:   #8b7fb8;
       --error:        #f87171;
@@ -23,6 +26,64 @@
       --radius-sm:    8px;
       --font:         'Georgia', 'Times New Roman', serif;
       --font-ui:      system-ui, -apple-system, sans-serif;
+    }
+
+    /* ── Ambient background glow ──────────────────────────────────────────── */
+    /* Slow-drifting blurred blobs behind everything. Their colors are retinted
+       to match the generated image's mood (see applyMoodTheme in the script) —
+       the background becomes part of the output, not just decoration around it. */
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.55;
+      transition: background 1.2s ease;
+    }
+
+    .blob-1 {
+      width: 420px; height: 420px;
+      top: -12%; left: -8%;
+      background: var(--glow-1);
+      animation: drift1 26s ease-in-out infinite;
+    }
+
+    .blob-2 {
+      width: 360px; height: 360px;
+      bottom: -14%; right: -6%;
+      background: var(--glow-2);
+      animation: drift2 32s ease-in-out infinite;
+    }
+
+    .blob-3 {
+      width: 300px; height: 300px;
+      top: 42%; left: 62%;
+      background: var(--glow-3);
+      animation: drift3 22s ease-in-out infinite;
+    }
+
+    @keyframes drift1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50%      { transform: translate(60px, 40px) scale(1.1); }
+    }
+    @keyframes drift2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50%      { transform: translate(-50px, -30px) scale(1.05); }
+    }
+    @keyframes drift3 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50%      { transform: translate(-40px, 50px) scale(0.95); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .blob { animation: none; }
     }
 
     html, body {
@@ -34,6 +95,7 @@
     }
 
     body {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -62,6 +124,14 @@
       margin-top: 0.5rem;
       color: var(--text-muted);
       font-size: 1rem;
+    }
+
+    header p.subtitle {
+      max-width: 480px;
+      margin: 0.6rem auto 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      opacity: 0.8;
     }
 
     /* ── Input card ───────────────────────────────────────────────────────── */
@@ -226,8 +296,24 @@
       font-size: 1.05rem;
       line-height: 1.9;
       color: var(--text);
-      white-space: pre-line;
       flex: 1;
+    }
+
+    /* Each poem line fades/rises in with a stagger — set via inline
+       animation-delay per line in showOutput(). */
+    .poem-line {
+      display: block;
+      opacity: 0;
+      transform: translateY(10px);
+      animation: lineIn 0.6s ease forwards;
+    }
+
+    @keyframes lineIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .poem-line { animation: none; opacity: 1; transform: none; }
     }
 
     /* ── Image card ───────────────────────────────────────────────────────── */
@@ -247,12 +333,22 @@
       border-radius: var(--radius-sm);
       border: 1px solid var(--border);
       display: block;
-      /* Fade in when src is set */
+      /* Fade + soften in when src is set, like a photo developing */
       opacity: 0;
-      transition: opacity 0.4s ease;
+      filter: blur(18px);
+      transform: scale(1.02);
+      transition: opacity 0.7s ease, filter 0.7s ease, transform 0.7s ease;
     }
 
-    #mood-image.loaded { opacity: 1; }
+    #mood-image.loaded {
+      opacity: 1;
+      filter: blur(0);
+      transform: scale(1);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #mood-image { transition: opacity 0.3s ease; filter: none; transform: none; }
+    }
 
     /* ── Footer ───────────────────────────────────────────────────────────── */
     footer {
@@ -268,9 +364,16 @@
 </head>
 <body>
 
+  <div class="bg-glow" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
+  </div>
+
   <header>
     <h1>MoodMuse</h1>
     <p>Type a mood or scene &mdash; get a poem and a mood board.</p>
+    <p class="subtitle">Describe a feeling or scene, and MoodMuse writes an original poem and paints a matching AI image to go with it &mdash; powered by Amazon Bedrock.</p>
   </header>
 
   <div class="input-card">
@@ -354,17 +457,98 @@
     }
 
     function showOutput(poem, imageB64) {
-      // Render poem (preserve line breaks)
-      poemText.textContent = poem;
+      // Render poem as a staggered, line-by-line reveal instead of an instant
+      // block — each line fades and rises in a beat after the last.
+      poemText.innerHTML = "";
+      poem.split("\n").forEach((line, i) => {
+        const span = document.createElement("span");
+        span.className = "poem-line";
+        span.style.animationDelay = `${i * 0.15}s`;
+        span.textContent = line.length ? line : " "; // keep blank lines visible
+        poemText.appendChild(span);
+      });
 
-      // Render image with fade-in
+      // Render image with a fade + blur-to-sharp reveal, then retint the UI's
+      // accent palette to match the image's dominant color once it's loaded.
       moodImage.classList.remove("loaded");
-      moodImage.onload = () => moodImage.classList.add("loaded");
+      moodImage.onload = () => {
+        moodImage.classList.add("loaded");
+        applyMoodTheme(moodImage);
+      };
       moodImage.src = `data:image/png;base64,${imageB64}`;
 
       output.classList.add("visible");
       // Scroll output into view smoothly
       output.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ── Mood-reactive theming ────────────────────────────────────────────────
+    // Samples the generated image's dominant color and retints the UI's accent
+    // palette (button, focus glow, background blobs) to match — the interface
+    // becomes the mood rather than just displaying it next to a fixed theme.
+    function applyMoodTheme(imgEl) {
+      try {
+        const size = 24; // small sample — cheap, plenty for an average color
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(imgEl, 0, 0, size, size);
+        const { data } = ctx.getImageData(0, 0, size, size);
+
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i]; g += data[i + 1]; b += data[i + 2];
+          count++;
+        }
+        r = Math.round(r / count);
+        g = Math.round(g / count);
+        b = Math.round(b / count);
+
+        const [h, s] = rgbToHsl(r, g, b);
+        const sat = clamp(s, 45, 75);
+
+        // Clamp saturation/lightness so text stays readable and the palette
+        // stays in the same "vibrant pastel on dark" family as the default.
+        const root = document.documentElement.style;
+        root.setProperty("--accent",      hslToCss(h, sat, 74));
+        root.setProperty("--accent-dark", hslToCss(h, clamp(s, 50, 80), 48));
+        root.setProperty("--accent-glow", hslToCss(h, sat, 60, 0.28));
+        root.setProperty("--glow-1", hslToCss(h, 60, 65, 0.35));
+        root.setProperty("--glow-2", hslToCss((h + 30) % 360, 55, 60, 0.28));
+        root.setProperty("--glow-3", hslToCss((h + 330) % 360, 50, 70, 0.22));
+      } catch (e) {
+        // Never let a theming failure affect the real poem/image output.
+        console.warn("Mood theming skipped:", e);
+      }
+    }
+
+    function clamp(n, min, max) { return Math.min(max, Math.max(min, n)); }
+
+    function rgbToHsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s;
+      const l = (max + min) / 2;
+      if (max === min) {
+        h = s = 0;
+      } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          default: h = (r - g) / d + 4;
+        }
+        h *= 60;
+      }
+      return [h, s * 100];
+    }
+
+    function hslToCss(h, s, l, a) {
+      return a === undefined
+        ? `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l}%)`
+        : `hsla(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l}%, ${a})`;
     }
 
     // ── Generate handler ───────────────────────────────────────────────────────
