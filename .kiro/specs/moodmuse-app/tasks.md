@@ -1,5 +1,11 @@
 # MoodMuse — Tasks
 
+> **SUPERSEDED — historical record only.**
+> This spec was written against the original Nova Canvas / S3-static-website design.
+> The deployed app uses Stability AI (`us.stability.stable-image-control-sketch-v1:0`)
+> for images and AWS Amplify Hosting. For the current architecture see `README.md`;
+> for the full build narrative see `ARTICLE.md`.
+
 > Retroactive spec. All tasks below are complete. Status is recorded for
 > reference and for the Builder Center article write-up.
 
